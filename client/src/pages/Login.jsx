@@ -5,6 +5,7 @@ import { Factory } from "lucide-react";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
+
 const DEMO_ACCOUNTS = [
   { label: "Admin", email: "admin@manuflow.com", password: "admin123", color: "bg-purple-100 text-purple-700" },
   { label: "BDA", email: "bda@manuflow.com", password: "bda123", color: "bg-blue-100 text-blue-700" },
