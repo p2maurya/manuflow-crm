@@ -9,9 +9,9 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-    if (token && storedUser) {
-      setUser(JSON.parse(storedUser));
+    const stored = localStorage.getItem("user");
+    if (token && stored) {
+      setUser(JSON.parse(stored));
       api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     }
     setLoading(false);
@@ -25,8 +25,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    localStorage.clear();
     delete api.defaults.headers.common["Authorization"];
     setUser(null);
   };

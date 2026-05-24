@@ -1,22 +1,21 @@
 import express from "express";
 import {
-  createLead,
-  getLeads,
-  updateLead,
-  deleteLead,
-  getLeadStats,
+  getStats, getTeamPerformance, getLeads, getLead,
+  createLead, updateLead, deleteLead, addCommunication,
 } from "../controllers/leadController.js";
-import { protect } from "../middleware/auth.js";
+import { protect, adminOnly } from "../middleware/auth.js";
 
 const router = express.Router();
 
-// All lead routes require authentication
 router.use(protect);
 
-router.get("/stats", getLeadStats);
+router.get("/stats", getStats);
+router.get("/team-performance", adminOnly, getTeamPerformance);
 router.get("/", getLeads);
+router.get("/:id", getLead);
 router.post("/", createLead);
 router.put("/:id", updateLead);
-router.delete("/:id", deleteLead);
+router.delete("/:id", adminOnly, deleteLead);
+router.post("/:id/communicate", addCommunication);
 
 export default router;

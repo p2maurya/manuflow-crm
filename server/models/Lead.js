@@ -1,46 +1,44 @@
 import mongoose from "mongoose";
 
-// FIX: Field names now match the frontend form (companyName, contactPerson)
-// FIX: Status enum now matches the frontend dropdown options
+const communicationSchema = new mongoose.Schema(
+  {
+    type: { type: String, enum: ["call", "email", "meeting", "note"], default: "note" },
+    message: { type: String, required: true },
+    addedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    addedByName: { type: String },
+  },
+  { timestamps: true }
+);
+
 const leadSchema = new mongoose.Schema(
   {
-    companyName: {
+    companyName: { type: String, required: true, trim: true },
+    contactPerson: { type: String, trim: true },
+    email: { type: String, trim: true, lowercase: true },
+    phone: { type: String, trim: true },
+    industry: { type: String, trim: true },
+    source: {
       type: String,
-      required: true,
-      trim: true,
-    },
-    contactPerson: {
-      type: String,
-      trim: true,
-    },
-    email: {
-      type: String,
-      trim: true,
-      lowercase: true,
-    },
-    phone: {
-      type: String,
-      trim: true,
+      enum: ["cold-call", "referral", "website", "exhibition", "linkedin", "other"],
+      default: "other",
     },
     status: {
       type: String,
-      default: "New",
-      // FIX: enum aligned with frontend dropdown options
       enum: ["New", "Contacted", "Negotiation", "Won", "Lost"],
+      default: "New",
     },
-    source: {
+    priority: {
       type: String,
-      trim: true,
+      enum: ["Low", "Medium", "High"],
+      default: "Medium",
     },
-    assignedTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    notes: {
-      type: String,
-      trim: true,
-    },
+    dealValue: { type: Number, default: 0 }, // expected deal value in rupees
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    assignedToName: { type: String },
+    nextFollowUp: { type: Date },
+    communications: [communicationSchema],
+    product: { type: String, trim: true }, // what product/service they want
+    notes: { type: String, trim: true },
   },
   { timestamps: true }
 );

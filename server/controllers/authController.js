@@ -2,83 +2,71 @@ import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-const generateToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+const token = (id) =>
+  jwt.sign({ id }, process.env.JWT_SECRET || "manuflow_secret", { expiresIn: "7d" });
 
-// POST /api/auth/register
-export const registerUser = async (req, res) => {
+export const register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, phone, target } = req.body;
+    if (!name || !email || !password)
+      return res.status(400).json({ message: "Name, email and password required" });
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "Name, email and password are required" });
-    }
-
-    const userExists = await User.findOne({ email });
-    if (userExists) {
+    if (await User.findOne({ email }))
       return res.status(400).json({ message: "User already exists" });
-    }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const user = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-      role: role || "employee",
-    });
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await User.create({ name, email, password: hashed, role, phone, target });
 
     res.status(201).json({
-      message: "User registered successfully",
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
-      token: generateToken(user._id),
+      token: token(user._id),
+      user: { _id: user._id, name: user.name, email: user.email, role: user.role },
     });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
   }
 };
 
-// POST /api/auth/login
-export const loginUser = async (req, res) => {
+export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
-    }
+    if (!email || !password)
+      return res.status(400).json({ message: "Email and password required" });
 
     const user = await User.findOne({ email });
-    if (!user) {
+    if (!user || !(await bcrypt.compare(password, user.password)))
       return res.status(400).json({ message: "Invalid credentials" });
-    }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
-
-    res.status(200).json({
-      message: "Login successful",
-      token: generateToken(user._id),
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
+    res.json({
+      token: token(user._id),
+      user: { _id: user._id, name: user.name, email: user.email, role: user.role },
     });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
   }
 };
 
-// GET /api/auth/me  (protected)
-export const getMe = async (req, res) => {
-  res.status(200).json(req.user);
+export const getMe = async (req, res) => res.json(req.user);
+
+// Admin: get all team members
+export const getTeam = async (req, res) => {
+  try {
+    const team = await User.find().select("-password").sort({ createdAt: -1 });
+    res.json(team);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+export const updateUser = async (req, res) => {
+  try {
+    const { name, phone, target, role, isActive } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { name, phone, target, role, isActive },
+      { new: true }
+    ).select("-password");
+    res.json(user);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 };

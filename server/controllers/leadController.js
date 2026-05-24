@@ -1,109 +1,173 @@
 import Lead from "../models/Lead.js";
 
-// GET /api/leads/stats  — dashboard summary
-export const getLeadStats = async (req, res) => {
+// Dashboard stats
+export const getStats = async (req, res) => {
   try {
-    const total = await Lead.countDocuments();
-    const byStatus = await Lead.aggregate([
-      { $group: { _id: "$status", count: { $sum: 1 } } },
-    ]);
+    const filter = req.user.role === "bda" ? { assignedTo: req.user._id } : {};
+
+    const [total, byStatus, totalValue, wonValue, recentLeads, overdueFollowUps] =
+      await Promise.all([
+        Lead.countDocuments(filter),
+        Lead.aggregate([
+          { $match: filter },
+          { $group: { _id: "$status", count: { $sum: 1 }, value: { $sum: "$dealValue" } } },
+        ]),
+        Lead.aggregate([{ $match: filter }, { $group: { _id: null, total: { $sum: "$dealValue" } } }]),
+        Lead.aggregate([
+          { $match: { ...filter, status: "Won" } },
+          { $group: { _id: null, total: { $sum: "$dealValue" } } },
+        ]),
+        Lead.find(filter).sort({ createdAt: -1 }).limit(5).select("companyName status createdAt assignedToName dealValue"),
+        Lead.countDocuments({
+          ...filter,
+          nextFollowUp: { $lt: new Date() },
+          status: { $nin: ["Won", "Lost"] },
+        }),
+      ]);
 
     const statusMap = {};
-    byStatus.forEach(({ _id, count }) => {
-      statusMap[_id] = count;
+    byStatus.forEach(({ _id, count, value }) => {
+      statusMap[_id] = { count, value };
     });
 
-    res.status(200).json({
+    res.json({
       total,
-      new: statusMap["New"] || 0,
-      contacted: statusMap["Contacted"] || 0,
-      negotiation: statusMap["Negotiation"] || 0,
-      won: statusMap["Won"] || 0,
-      lost: statusMap["Lost"] || 0,
+      pipeline: totalValue[0]?.total || 0,
+      won: wonValue[0]?.total || 0,
+      overdueFollowUps,
+      byStatus: statusMap,
+      recentLeads,
     });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
   }
 };
 
-// GET /api/leads  — list all leads (with optional status filter & search)
+// Team performance (admin only)
+export const getTeamPerformance = async (req, res) => {
+  try {
+    const performance = await Lead.aggregate([
+      { $group: {
+        _id: "$assignedTo",
+        name: { $first: "$assignedToName" },
+        totalLeads: { $sum: 1 },
+        wonLeads: { $sum: { $cond: [{ $eq: ["$status", "Won"] }, 1, 0] } },
+        lostLeads: { $sum: { $cond: [{ $eq: ["$status", "Lost"] }, 1, 0] } },
+        totalValue: { $sum: "$dealValue" },
+        wonValue: { $sum: { $cond: [{ $eq: ["$status", "Won"] }, "$dealValue", 0] } },
+      }},
+      { $sort: { wonValue: -1 } },
+    ]);
+    res.json(performance);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+// Get leads with filter + search
 export const getLeads = async (req, res) => {
   try {
-    const { status, search } = req.query;
+    const { status, priority, search, assignedTo } = req.query;
     const filter = {};
 
-    if (status && status !== "All") {
-      filter.status = status;
-    }
+    // BDA can only see their own leads
+    if (req.user.role === "bda") filter.assignedTo = req.user._id;
+    else if (assignedTo) filter.assignedTo = assignedTo;
+
+    if (status && status !== "All") filter.status = status;
+    if (priority && priority !== "All") filter.priority = priority;
 
     if (search) {
       filter.$or = [
         { companyName: { $regex: search, $options: "i" } },
         { contactPerson: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
+        { product: { $regex: search, $options: "i" } },
       ];
     }
 
-    const leads = await Lead.find(filter).sort({ createdAt: -1 });
-    res.status(200).json(leads);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    const leads = await Lead.find(filter)
+      .sort({ createdAt: -1 })
+      .select("-communications"); // don't send comms in list
+    res.json(leads);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
   }
 };
 
-// POST /api/leads
+// Get single lead with communications
+export const getLead = async (req, res) => {
+  try {
+    const lead = await Lead.findById(req.params.id).populate("assignedTo", "name email");
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    res.json(lead);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
+
+// Create lead
 export const createLead = async (req, res) => {
   try {
-    const { companyName, contactPerson, email, phone, source, notes } = req.body;
+    const { companyName, contactPerson, email, phone, industry, source,
+            priority, dealValue, nextFollowUp, product, notes, assignedTo, assignedToName } = req.body;
 
-    if (!companyName) {
-      return res.status(400).json({ message: "Company name is required" });
-    }
+    if (!companyName) return res.status(400).json({ message: "Company name required" });
 
     const lead = await Lead.create({
-      companyName,
-      contactPerson,
-      email,
-      phone,
-      source,
-      notes,
+      companyName, contactPerson, email, phone, industry, source,
+      priority, dealValue, nextFollowUp, product, notes,
+      assignedTo: assignedTo || req.user._id,
+      assignedToName: assignedToName || req.user.name,
     });
-
     res.status(201).json(lead);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
   }
 };
 
-// PUT /api/leads/:id  — update any field(s)
+// Update lead
 export const updateLead = async (req, res) => {
   try {
     const lead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+      new: true, runValidators: true,
     });
-
-    if (!lead) {
-      return res.status(404).json({ message: "Lead not found" });
-    }
-
-    res.status(200).json(lead);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    res.json(lead);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
   }
 };
 
-// DELETE /api/leads/:id
+// Delete lead
 export const deleteLead = async (req, res) => {
   try {
     const lead = await Lead.findByIdAndDelete(req.params.id);
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    res.json({ message: "Lead deleted" });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+};
 
-    if (!lead) {
-      return res.status(404).json({ message: "Lead not found" });
-    }
+// Add communication log
+export const addCommunication = async (req, res) => {
+  try {
+    const { type, message } = req.body;
+    if (!message) return res.status(400).json({ message: "Message required" });
 
-    res.status(200).json({ message: "Lead deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+    lead.communications.unshift({
+      type,
+      message,
+      addedBy: req.user._id,
+      addedByName: req.user.name,
+    });
+    await lead.save();
+    res.json(lead);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
   }
 };
