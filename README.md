@@ -1,6 +1,7 @@
 # ManuFlow CRM
 
 A full-stack CRM system built for the Business Development Associate (BDA) team of a manufacturing company. Built with the MERN stack.
+live link : https://manuflow-crm.vercel.app
 
 ## Features
 
