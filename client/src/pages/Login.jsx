@@ -5,6 +5,11 @@ import { Factory } from "lucide-react";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
+const DEMO_ACCOUNTS = [
+  { label: "Admin", email: "admin@manuflow.com", password: "admin123", color: "bg-purple-100 text-purple-700" },
+  { label: "BDA", email: "bda@manuflow.com", password: "bda123", color: "bg-blue-100 text-blue-700" },
+];
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -24,6 +29,10 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fillDemo = (account) => {
+    setForm({ email: account.email, password: account.password });
   };
 
   return (
@@ -69,6 +78,23 @@ export default function Login() {
               {loading ? "Signing in…" : "Sign In"}
             </button>
           </form>
+
+          {/* Demo accounts */}
+          <div className="mt-5 pt-4 border-t border-stone-100">
+            <p className="text-xs text-stone-400 text-center mb-3">Demo accounts — click to fill</p>
+            <div className="flex gap-2">
+              {DEMO_ACCOUNTS.map((acc) => (
+                <button
+                  key={acc.label}
+                  onClick={() => fillDemo(acc)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-opacity hover:opacity-80 ${acc.color}`}
+                >
+                  {acc.label}
+                  <span className="block text-xs font-normal opacity-70 mt-0.5">{acc.email}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
